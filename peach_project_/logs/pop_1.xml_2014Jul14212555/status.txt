@@ -1,0 +1,23 @@
+Peach Fuzzer Run
+=================
+
+Command line: C:\Users\Masha\Downloads\peach_svn\\peach.py --range 1 2 C:\Users\Masha\Downloads\peach_svn\samples\mutated\pop_1.xml 
+Date of run: Tue Jul 15 00:25:55 2014
+SEED: 1405373154.66
+Pit File: pop_1.xml
+Run name: DefaultRun
+
+Tue Jul 15 00:25:55 2014: 
+Tue Jul 15 00:25:55 2014: Test starting: TheTest
+Tue Jul 15 00:25:55 2014: 
+Tue Jul 15 00:25:55 2014: On test variation # 1
+Tue Jul 15 00:26:10 2014: 
+Tue Jul 15 00:26:10 2014: Test completed: TheTest
+Tue Jul 15 00:26:10 2014: 
+Tue Jul 15 00:26:10 2014: Total number of test cases: 3
+Tue Jul 15 00:26:10 2014: 
+Tue Jul 15 00:26:10 2014: Average test case time: 5.0076666673
+
+
+== Run completed ==
+Tue Jul 15 00:26:10 2014
