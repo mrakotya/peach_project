@@ -11,28 +11,48 @@ namespace peach_project_
 {
     public class GAFramework
     {
-        public static readonly int GA_POPSIZE = 5;		// ga population size
-        public static readonly int GA_MAXITER = 50;		// maximum iterations
-        public static readonly double GA_ELITRATE = 0.10;	// elitism rate
-        public static readonly double GA_MUTATIONRATE = 0.25;	// mutation rate
+        //fields of class GAFramework
         public static readonly int RAND_MAX = 0x7fff;
-        public static readonly double GA_MUTATION = RAND_MAX * GA_MUTATIONRATE;
-        public static readonly String GA_TARGET = "";
-        public static readonly int MAX_ITERCOUNTER = 1000;
-        public static readonly int SURVIVAL_AGE = 5;
-        public static readonly double S_FOR_LINEARRANKING = 1.5;
-        public static readonly double THRESHOLD = 0.5;
-        public static readonly Double AVG_DIFF = 0.15; // average difference between two generations in percentage
-        public static readonly Double STD_DIFF = 0.15;
         String pathOfPit;
+        String logsPath;
+        String PeachTestRange;
         String OriginalPitFile;
         Dictionary<string, string> data_vector = new Dictionary<string, string>();
         string data_line;
-        List<Citizen> pop = new List<Citizen>();
+        List<Citizen> pop_list = new List<Citizen>();
         List<Citizen> buffer = new List<Citizen>();
-
-        public void start(int population, String logsPath, String PathOfPit,  String OriginalPitFile, String PeachTestRange)
+        Random rnd = new Random(DateTime.Now.Millisecond);
+        int BadGenesChildrenNumberToMake;
+        int elitrate;
+        bool useGenotor;
+        int genrate;
+        int maxAge;
+        bool withScaling;
+        double GAmutate;
+        int iterarions;
+        int faults_counter;
+        String peach_cmd;
+ 
+        //function starting the session run
+        public void start(Parameters parm)
         {
+            Random rand = new Random();
+            //get all parameters
+            this.elitrate = parm.getElitrate();
+            useGenotor = false;
+            this.genrate = parm.getGenrate();
+            this.logsPath = parm.getLogsPath();
+            this.PeachTestRange = parm.getPeachTestRange();
+            this.maxAge = parm.getMaxAge();
+            this.withScaling = parm.getWithScaling();
+            this.GAmutate = parm.getMutationRate()*RAND_MAX;
+            this.iterarions = parm.getIterations();
+            faults_counter = 0;
+            this.pathOfPit = parm.getPathOfPitPopulation();
+            this.OriginalPitFile = parm.getPitfilePath();
+            this.peach_cmd = parm.getPeachFuzzerPlatformPath();
+
+            //clear logs from prefious runs and prepare directory children faults 
             System.IO.DirectoryInfo downloadedMessageInfo = new System.IO.DirectoryInfo(@logsPath);
 
             foreach (System.IO.DirectoryInfo dir in downloadedMessageInfo.GetDirectories())
@@ -43,31 +63,78 @@ namespace peach_project_
             {
                 file.Delete();
             }
-            this.pathOfPit = PathOfPit;
-            this.OriginalPitFile = OriginalPitFile;
-            init_population(population, pop);
-            calc_fitness(pathOfPit, pop, logsPath, PeachTestRange);
-            sort_by_fitness();
-            mate(pop, buffer, 1, 1, true, 1);
+
+            downloadedMessageInfo = new System.IO.DirectoryInfo(@pathOfPit);
+
+            foreach (System.IO.DirectoryInfo dir in downloadedMessageInfo.GetDirectories())
+            {
+                dir.Delete(true);
+            }
+            foreach (System.IO.FileInfo file in downloadedMessageInfo.GetFiles())
+            {
+                file.Delete();
+            }
+
+
+            if (!System.IO.Directory.Exists(@pathOfPit + @"children/"))
+            {
+                System.IO.Directory.CreateDirectory(@pathOfPit + @"children/");
+            }
+            if (!System.IO.Directory.Exists(@pathOfPit + @"faults/"))
+            {
+                System.IO.Directory.CreateDirectory(@pathOfPit + @"faults/");
+            }
+
+            init_population(parm.getPopulation(), pop_list);
+
+
+
+            //start running
+                for (int j = 0; j < this.iterarions; j++)
+                {
+                calc_fitness(pathOfPit, pop_list, logsPath, PeachTestRange);//calculate fitness
+                sort_by_fitness();//sort population by fitness value
+                Statistics.get_statistics(pop_list, pathOfPit, j);
+                if (pop_list[0].getFitness() > 0)
+                {
+                    mate(pop_list, buffer, parm.getParentsChoiceStrategy(), 1, true, parm.getSurvivalStrategy(), parm.getBadGenesChildren());          
+                    pop_list = buffer.ToList();
+                    buffer.Clear();
+
+                }
+                else //if all peach pits are invalid, restart session
+                {
+                    pop_list.Clear();
+                    init_population(parm.getPopulation(), pop_list);
+                    j = -1;
+                    System.Windows.Forms.MessageBox.Show("All pit files are invalid. Session will be restarted.");
+
+                }
+           }
         }
 
-        public void calc_fitness(String pathOfPit, List<Citizen> pop, String logsPath, String PeachTestRange)
+        //calculate fitness
+        private void calc_fitness(String pathOfPit, List<Citizen> pop, String logsPath, String PeachTestRange)
         {
             int len = pop.Count;
             len = 2;
             double counter = 0;
-            double temp = 0;
+            bool fault_detected = false;
+            
+            data_vector.Clear();
+            
             System.IO.File.WriteAllText(@logsPath + "path_to_file.txt", String.Empty);
             for(int i=0; i<pop.Count; i++)
             {
-            var path = Environment.ExpandEnvironmentVariables(@"C:\Users\Masha\Downloads\peach_svn\peach.bat");
-            var parms = "--range=1," + PeachTestRange +" " + pathOfPit + "pop_" + i + ".xml";
-            var process = Process.Start(path, parms);
-            process.WaitForExit();   
-            //Console.ReadKey();
+            var path = Environment.ExpandEnvironmentVariables(peach_cmd);
+            var parms = "--range=1," + PeachTestRange +" " + pathOfPit + "pop_" + i.ToString() + ".xml"; //parameters for the peach fuzzer platform cmd
+           
+                var process = Process.Start(path, parms);
+                process.WaitForExit();
+           
             }
-            Console.WriteLine("\nGet test time info from status.txt\n");
-            Console.WriteLine("Loading all data into memory\n");
+            
+
             string[] lines = System.IO.File.ReadAllLines(@logsPath + "path_to_file.txt");
 
             foreach (string line in lines)
@@ -89,14 +156,44 @@ namespace peach_project_
                         else if (data_line.Contains("Fault was detected on test"))
                         {
                             counter ++;
+                            fault_detected = true;
+
                         }
                     }
                 }
                 pop[Convert.ToInt32(entry.Key.Split('.')[0].Split('_')[1])].setFitness(counter);
-                counter = 0;
+                String rem = @"\status.txt";
+                int index = entry.Value.IndexOf(rem);
+               
+                if (fault_detected)
+                {
+                    //here keep file with fault 
+                    String SoursePath = (index < 0) ? entry.Value : entry.Value.Remove(index, rem.Length);
+                    CopyDir.Copy(SoursePath, pathOfPit + @"faults/" + faults_counter.ToString());
+                    System.IO.File.Copy(pathOfPit + "pop_" + entry.Key.Split('.')[0].Split('_')[1] + ".xml", pathOfPit + @"faults/" + faults_counter.ToString() + "/pop_" + entry.Key.Split('.')[0].Split('_')[1] + ".xml");
+                    faults_counter++;
+                    pop[Convert.ToInt32(entry.Key.Split('.')[0].Split('_')[1])].setFaults(true);
+                    fault_detected = false;
 
+                }
+                counter = 0;
+               
+
+              
             }
-            //=========================================================================================================================================
+
+            //delete logs from current iteration
+            System.IO.DirectoryInfo downloadedMessageInfo = new System.IO.DirectoryInfo(@logsPath);
+
+            foreach (System.IO.DirectoryInfo dir in downloadedMessageInfo.GetDirectories())
+            {
+                dir.Delete(true);
+            }
+            foreach (System.IO.FileInfo file in downloadedMessageInfo.GetFiles())
+            {
+                file.Delete();
+            }
+        
             Process[] ps = Process.GetProcessesByName("python");
             foreach (Process p in ps)
                 p.Kill();
@@ -104,362 +201,155 @@ namespace peach_project_
         }
 
 
-
-        public void init_population(int population, List<Citizen> pop)
+        //initialize population
+        private void init_population(int population, List<Citizen> pop)
         {
-            //later to do: path as a function start parameter
-            for(int i= 0; i<5; i++)
+            for(int i= 0; i<population; i++)
             {
-                XDocument peachPit = XDocument.Load(@OriginalPitFile);
-             
-             var DataModelblocks = peachPit.XPathSelectElements("Peach/DataModel");
-             var Testblocks = peachPit.Descendants("Test");
-            foreach (var block in DataModelblocks)
-            {
-                switch (block.Name.ToString().ToLower())
-                {
-                    case "block":
-                        block_(block);
-                        break;
-                    case "blob":
-                        blob_(block);
-                        break;
-                    case "choice":
-                        break;
-                    case "custom":
-                        break;
-                    case "flag":
-                        break;
-                    case "flags":
-                        break;
-                    case "number":
-                        break;
-                    case "padding":
-                        break;
-                    case "string":
-                        string_(block);
-                        break;
-                    case "relation":
-                        break;
-                    case "fixup":
-                        break;
-                    case "transformer":
-                        break;
-                    case "placement":
-                        break;
-                    default:
-                        Console.WriteLine("ERROR:UNKNOWN TAG");
-                        break;
-                }
-
-            }
-
+              XDocument peachPit = XDocument.Load(@OriginalPitFile);
+              MutationFunctions.mutate(peachPit, rnd);          
             String fileName = "pop_" + i +".xml";
             peachPit.Save(pathOfPit + fileName);
             Citizen c = new Citizen();
-            c.setDMBlocks(DataModelblocks);
-            c.setTestBlocks(Testblocks);
+            // c.setDMBlocks(DataModelblocks);
+            //c.setTestBlocks(Testblocks);
             c.setIdx(i);
             pop.Add(c);
             }
         }
 
-
-        private void block_(XElement el)
-        {
-            //minoccurs  maxOccurs
-            Random rnd = new Random();
-            int val;
-            val = rnd.Next(1, 100);
-            if (val % 2 == 0)
-            {
-                minMaxOccurs(el);
-            }
-            val = rnd.Next(1, 100);
-            if (val % 2 == 0)
-            {
-                mutable(el);
-            }
-        }
-
-
-        private void blob_(XElement el)
-        {
-            //minoccurs  maxOccurs
-            int val;
-            Random rnd = new Random();
-            val = rnd.Next(1, 100);
-            if (val % 2 == 0)
-            {
-                minMaxOccurs(el);
-            }
-            val = rnd.Next(1, 100);
-            if (val % 2 == 0)
-            {
-                mutable(el);
-            }
-            val = rnd.Next(1, 100);
-            if (val % 2 == 0)
-            {
-                token(el);
-            }
-            val = rnd.Next(1, 100);
-            if (val % 2 == 0)
-            {
-                value_(el);
-            }
-
-
-        }
-
-        void string_(XElement el)
-        {
-            //minoccurs  maxOccurs
-            int val;
-            Random rnd = new Random();
-            val = rnd.Next(1, 100);
-            if (val % 2 == 0)
-            {
-                minMaxOccurs(el);
-            }
-            val = rnd.Next(1, 100);
-            if (val % 2 == 0)
-            {
-                mutable(el);
-            }
-            val = rnd.Next(1, 100);
-            if (val % 2 == 0)
-            {
-                token(el);
-            }
-            val = rnd.Next(1, 100);
-         
-                value_(el);
-            
-
-        }
-
-
-        private void minMaxOccurs(XElement el)
-        {
-            int minValue = -1, maxValue = -1;
-            if (el.Attribute("maxOccurs") != null)
-            {
-                maxValue = Convert.ToInt32(el.Attribute("maxOccurs").Value.ToString());
-            }
-            if (el.Attribute("minOccurs") != null)
-            {
-                minValue = Convert.ToInt32(el.Attribute("minOccurs").Value.ToString());
-            }
-
-            Random rnd = new Random();
-            if (maxValue != -1 && minValue == -1)
-            {
-                maxValue = rnd.Next(1, maxValue);
-                el.Attribute("maxOccurs").SetValue(maxValue.ToString());
-            }
-            else if (maxValue != -1 && minValue != -1)
-            {
-                maxValue = rnd.Next(minValue, maxValue);
-                el.Attribute("maxOccurs").SetValue(maxValue.ToString());
-            }
-            if (minValue != -1 && maxValue == -1)
-            {
-                minValue = rnd.Next(minValue, minValue * 2);
-                el.Attribute("minOccurs").SetValue(minValue.ToString());
-            }
-            else if (minValue != -1 && maxValue != -1)
-            {
-                minValue = rnd.Next(minValue, maxValue);
-                el.Attribute("minOccurs").SetValue(minValue.ToString());
-            }
-        }
-
-
-        private void mutable(XElement el)
-        {
-            if (el.Attribute("mutable") != null)
-            {
-                if (el.Attribute("mutable").Value.ToString().Equals("false"))
-                {
-                    el.Attribute("mutable").SetValue("true");
-                }
-            }
-            else
-            {
-                XAttribute attribute = new XAttribute("mutable", "false");
-                el.Add(attribute);
-            }
-        }
-
-        private void token(XElement el)
-        {
-            if (el.Attribute("token") != null)
-            {
-                if (el.Attribute("token").Value.ToString().Equals("false"))
-                {
-                    el.Attribute("token").SetValue("true");
-                }
-                else el.Attribute("token").SetValue("false");
-            }
-
-        }
-
-
-        private void value_(XElement el)
-        {
-            String type;
-            String StrValue;
-            int length;
-            Random rnd = new Random();
-
-            if (el.Attribute("valueType") == null)
-            {
-                type = "string";
-            }
-            else type = el.Attribute("valueType").Value.ToString();
-            if (el.Attribute("value") != null)
-            {
-                switch (type.ToLower())
-                {
-                    case "string":
-                        length = rnd.Next(1, 100);
-                        StrValue = crString(length);
-                        el.Attribute("value").SetValue(StrValue);
-                        break;
-                    case "hex":
-                        int b;
-                        b = Convert.ToInt32(el.Attribute("value").Value.ToString(), 16);
-                        b = rnd.Next(0, Math.Abs(b));
-                        StrValue = b.ToString("x");
-                        el.Attribute("value").SetValue(StrValue);
-                        break;
-                    case "literal":
-                        break;
-                    default:
-                        Console.WriteLine("Error:Wnknown Type");
-                        break;
-                }
-            }
-
-        }
-
-        private String crString(int length)
-        {
-            Random rnd = new Random();
-            StringBuilder b = new StringBuilder();
-            for (int j = 0; j < length; j++)
-            {
-                char c = (char)(rnd.Next(90) + 32);
-                b.Append(c);
-            }
-            return b.ToString();
-
-        }
-
-
+        //sorting functions
         private int fitness_sort(Citizen x, Citizen y)
         {
-            if (x.getFitness() > y.getFitness()) return 1;
+            if (x.getFitness() < y.getFitness()) return 1;
             else if (x.getFitness() == y.getFitness()) return 0;
             else return -1;
         }
 
         private void sort_by_fitness()
         {
-            pop.Sort(fitness_sort);
+            pop_list.Sort(fitness_sort);
+            
         }
-        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void mate(List<Citizen> population, List<Citizen> buffer, int selectionStrategy, int crossoverStrategy, Boolean linearRanking, int SurvivalStrategy)
+        
+        //breeding, i.e. selecting to parents and creating a child
+        void mate(List<Citizen> population, List<Citizen> buffer, int selectionStrategy, int crossoverStrategy, Boolean linearRanking, int SurvivalStrategy, int BadGenesChildren)
         {
-            int esize = (int)(GA_POPSIZE * GA_ELITRATE);
-          //  bool scaled = false;
+            
             Citizen child = new Citizen();
             List<Citizen> parents = new List<Citizen>();
 
+            List<Citizen> temp = new List<Citizen>();
+            temp = population.FindAll(x => x.getFitness() > 0);
+            int esize = (int)(temp.Count() * elitrate / 100);
+            BadGenesChildrenNumberToMake = (population.Count() - esize) * BadGenesChildren / 100;
+            int gensize = (int)(population.Count() * genrate / 100);
+            int oldIdx;
+            bool scaling;
+               if (withScaling == true)
+                   scaling = false;
+               else scaling = true;
 
-     /*       for (int i = 0; i < GA_POPSIZE; i++)
+            for (int i = 0; i < population.Count(); i++)
             {
                 parents.Clear();
                 //survival strategy
-                switch (SurvivalStrategy)
-                {
-                    case 0: //no strategy
-                        //do nothing
-                        break;
-                    case 1: //elitism
-                        if (i == 0)
-                        {
-                            elitism(population, buffer, esize);
-                            i += esize;
-                        }
-                        break;
-                    case 2: //aging
-                        if (i == 0)
-                        {
-                            aging(population, buffer, esize);
-                            i += esize;
-                        }
-                        break;
-                    case 3: //genitor
-                        if (i == 0)
-                        {
-                            genitor(population, buffer, population.Count - esize);
-                            i += population.Count - esize;
-                        }
-                        break;
-                }*/
+                 switch (SurvivalStrategy)
+                  {
+                      case 0: //elitism
+                          if (i == 0)
+                          {
+                              elitism(population, buffer, esize);
+                              i += esize;
+                              
+                          }
+                          break;
+                      case 1: //aging
+                          if (i == 0)
+                          {
+                              aging(population, buffer, esize);
+                              i += esize;
+                          }
+                          break;
+                      case 2: //genitor
+                          useGenotor = true;
+                          break;
+                  }
 
+               
                 // selection
                 switch (selectionStrategy)
                 {
-                    case 1: // fps
-                        //do scaling only once
-                       /* if (scaled == false)
+                    case 0:
+                        parents = naive(population);
+                        break;
+                    case 1:
+                         if (scaling == false)
                         {
                             expScalling(population);
-                            scaled = true;
-                        }*/
+                            scaling = true;
+                        }
                         parents = fps(population);
                         break;
-                    /*case 2: // tournament
+                    case 2: // tournament
                         parents = tournament(population, linearRanking);
                         break;
-                    case 3: // threshold
-                        parents = threshholdSelection(population);
-                        break;*/
                 }
 
-          
-                    switch (crossoverStrategy)
-                    {
-                        case 1: // uniform crossover
-                            child = uniform(parents);
-                            break;
-                      //  case 1: // one point crossover
-                       //     child = onepoint(parents);
-                       //     break;
 
-                    }
-                
-                buffer.Add(child);
-                // mutation
-
-            /*    if (rand.Next() < GA_MUTATION)
+                switch (crossoverStrategy)
                 {
-                    mutate(buffer[i]);
+                    case 1: // uniform crossover
+
+                        child = crossover(parents, buffer.Count);
+                        break;
                 }
-            }*/
+
+
+
+                if (useGenotor == false)
+                {
+                    int k = rnd.Next(0, RAND_MAX);
+                if (k < GAmutate) //is there necessity in mutation?
+                {
+                    XDocument peachPit = XDocument.Load(pathOfPit + @"children\pop_" + child.getIdx().ToString() + ".xml");
+                    MutationFunctions.mutate(peachPit, rnd);
+                    peachPit.Save(pathOfPit + @"children\pop_" + child.getIdx().ToString() + ".xml");
+                }
+                    buffer.Add(child);
+               }
+                else//use genitor
+                {
+                    if (gensize > 0)
+                    {
+                        oldIdx = child.getIdx();
+                        child.setIdx(population[population.Count()-1].getIdx());
+                        population.RemoveAt(population.Count() - 1);
+                        System.IO.File.Delete(pathOfPit + "pop_" + child.getIdx().ToString() + ".xml");
+                        population.Add(child);
+                        calc_fitness(pathOfPit, population, logsPath, PeachTestRange);
+                        sort_by_fitness();
+                        System.IO.File.Copy(pathOfPit + @"children\pop_" + oldIdx.ToString() + ".xml", pathOfPit +"pop_" + child.getIdx().ToString() + ".xml", true);
+                        System.IO.File.Delete(pathOfPit+ @"children\pop_" + oldIdx.ToString() + ".xml");
+                        gensize--;
+                    }
+                    else break;
+                    
+                }
+               
+            }
+        
+            CopyFolderContents(pathOfPit + "children", pathOfPit); //copy all children to the current population directory       
         }
 
-        ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        private Citizen uniform(List<Citizen> parents)
-        { 
 
-            //XDocument first = XDocument.Load(@"C:\Users\Masha\Downloads\peach_svn\samples\mutated\pop_" + parents[0].getIdx().ToString() +".xml");
-           // XDocument second = XDocument.Load(@"C:\Users\Masha\Downloads\peach_svn\samples\mutated\pop_" + parents[1].getIdx().ToString() +".xml");
-            XDocument first = XDocument.Load(@"C:\Users\Masha\Downloads\peach_svn\samples\mutated\pop_1.xml");
-            XDocument second = XDocument.Load(@"C:\Users\Masha\Downloads\peach_svn\samples\mutated\pop_0.xml");
+       //make crossover
+        private Citizen crossover(List<Citizen> parents, int index)
+        { 
+            Citizen child = new Citizen();
+            XDocument first = XDocument.Load(pathOfPit +"pop_" + parents[0].getIdx().ToString() +".xml");
+            XDocument second = XDocument.Load(pathOfPit +"pop_" + parents[1].getIdx().ToString() +".xml");
+
             var DataModelblocks_first = first.XPathSelectElements("Peach/DataModel");
             var DataModelblocks_second = second.XPathSelectElements("Peach/DataModel");
 
@@ -481,29 +371,64 @@ namespace peach_project_
                    select el;
                     if (des_second != null)
                     {
-                        //des_second.Single().SetAttributeValue("name", "KAKA");
-                        des_first.ReplaceWith(des_second);
+                        int val;
+                        val = rnd.Next(1, 100);
+                        if (val % 2 == 0)
+                        {
+                            des_first.ReplaceWith(des_second);
+                        }
                     }
                 }
                     
                 }
                
+
             }
 
-           
-            first.Save(@"C:\Users\Masha\Downloads\peach_svn\samples\mutated\dump.xml");
-
-            //child.setBlocks();
-            return null;
+            first.Save(pathOfPit + @"children\pop_" + index+  ".xml");
+            child.setDMBlocks(DataModelblocks_first);
+            child.setIdx(index);
+            return child;
      
         }
 
 
+        //naive choice of parents, that is parents are selected randomly
+        List<Citizen> naive(List<Citizen> population)
+        {
+            List<Citizen> parents = new List<Citizen>();
+            List<Citizen> temp = new List<Citizen>();
+            temp = population.FindAll(x=> x.getFitness()>0);
 
+
+            for(int i=0; i<2; i++)
+                {
+                    int rand = rnd.Next(0, population.Count);
+                    if(BadGenesChildrenNumberToMake==0)
+                         {
+                                               
+                            rand = rnd.Next(0, temp.Count);
+                            parents.Add(temp[rand]);
+                         }
+                     else
+                         {
+                                 parents.Add(population[rand]);
+                                 BadGenesChildrenNumberToMake--;
+                
+                         }
+            }
+           
+            return parents;
+        }
+
+        //fps selection strategy
         List<Citizen> fps(List<Citizen> population)
-        { // aka RWS
+        { // aka Roulette
             double totalFitness = 0;
-            Random rand = new Random();
+            double partialSum = 0;
+            int idx = 0;
+       
+            
             List<Citizen> parents = new List<Citizen>();
 
             foreach (Citizen citizen in population)
@@ -511,23 +436,148 @@ namespace peach_project_
                 totalFitness += citizen.getFitness();
             }
 
-            double rnd = rand.NextDouble() * totalFitness;
-            int idx;
-
-            for (idx = 0; idx < GA_POPSIZE - 1 && rnd > 0; idx++)
+     
+            double rand = rnd.NextDouble() * totalFitness;
+            while(rand > partialSum)
             {
-                rnd -= population[idx].getFitness();
+                partialSum += population[idx].getFitness();
+                idx++;
             }
-            parents.Add(population[population.Count - 1 - idx]);
+            parents.Add(population[idx-1]);
             // select 2nd individual
-            rnd = rand.NextDouble() * totalFitness;
-            for (idx = 0; idx < GA_POPSIZE - 1 && rnd > 0; idx++)
+            rand = rnd.NextDouble() * totalFitness;
+            partialSum = 0;
+            idx = 0;
+            while (rand > partialSum)
             {
-                rnd -= population[idx].getFitness();
+                partialSum += population[idx].getFitness();
+                idx++;
             }
-            parents.Add(population[population.Count - 1 - idx]);
+            parents.Add(population[idx-1]);
+
             return parents;
 
+        }
+
+      //elitism survival
+       void elitism(List<Citizen> population, List<Citizen> buffer, int esize)
+        {
+           
+            for (int i = 0; i < esize; i++)
+            {
+                Citizen child = new Citizen();
+                child.setFitness(population[i].getFitness());
+                child.setIdx(i);
+                buffer.Add(child);
+                System.IO.File.Copy(pathOfPit +  "pop_" + child.getIdx().ToString() + ".xml", pathOfPit + @"children\pop_" + i.ToString() + ".xml", true);
+            }
+           
+        }
+
+        //make scaling
+       private void expScalling(List<Citizen> population)
+       {
+           double fitness = 0;
+           foreach (Citizen citizen in population)
+           {
+               if(citizen.getFitness()>0)
+               fitness = Math.Sqrt(citizen.getFitness());
+               citizen.setFitness(fitness);
+           }
+       }
+
+      //aging survival strategy
+       private void aging(List<Citizen> population, List<Citizen> buffer, int esize)
+       {
+           int i = 0;
+           while (i < esize && i<population.Count)
+           {
+               if (population[i].getAge() <= maxAge)
+               {
+                   population[i].increaseAge();
+                   buffer.Add(population[i]);
+               }
+               else
+               {
+                   esize++;
+               }
+               i++;
+           }
+       }
+
+
+
+       private List<Citizen> tournament(List<Citizen> population, Boolean linearRanking)
+       {
+           List<Citizen> parents = new List<Citizen>();
+           int citezen_num, best_citizen;
+           double best_fit;
+           int x = rnd.Next(8) + 2; // select x members from current population(range from 2 to 10)
+           //now 2 best citizens are to be chosen from the group of x
+           best_citizen = rnd.Next(population.Count);
+           best_fit = population[best_citizen].getFitness();
+           for (int i = 0; i < x; i++)
+           {
+               citezen_num = rnd.Next(population.Count);
+               if (population[citezen_num].getFitness() > best_fit)
+               {                
+                       best_citizen = citezen_num;
+                       best_fit = population[citezen_num].getFitness();
+               }
+
+           }
+
+           parents.Add(population[best_citizen]); // for first parent
+
+           best_citizen = rnd.Next(population.Count);
+           best_fit = population[best_citizen].getFitness();
+
+           for (int i = 0; i < x; i++)
+           {
+               citezen_num = rnd.Next(population.Count);
+               if (population[citezen_num].getFitness() > best_fit)
+               {
+                       best_citizen = citezen_num;
+                       best_fit = population[citezen_num].getFitness();
+               }
+
+           }
+           parents.Add(population[best_citizen]); // for second parent
+
+           return parents;
+
+       }
+        
+
+        
+        
+//===============================================================Extra Functions==========================================================================
+        public static void CopyFolderContents(string sourceFolder, string destinationFolder)
+        {
+            if (System.IO.Directory.Exists(sourceFolder))
+            {
+                // Copy folder structure
+                foreach (string sourceSubFolder in System.IO.Directory.GetDirectories(sourceFolder, "*", System.IO.SearchOption.AllDirectories))
+                {
+                    System.IO.Directory.CreateDirectory(sourceSubFolder.Replace(sourceFolder, destinationFolder));
+                }
+
+                // Copy files
+                foreach (string sourceFile in System.IO.Directory.GetFiles(sourceFolder, "*", System.IO.SearchOption.AllDirectories))
+                {
+                    string destinationFile = sourceFile.Replace(sourceFolder, destinationFolder);
+                    System.IO.File.Copy(sourceFile, destinationFile, true);
+                }
+
+
+
+                System.IO.DirectoryInfo downloadedMessageInfo = new System.IO.DirectoryInfo(@sourceFolder);
+                foreach (System.IO.FileInfo file in downloadedMessageInfo.GetFiles())
+                {
+                    file.Delete();
+                }
+
+            }
         }
 
     }

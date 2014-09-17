@@ -9,20 +9,28 @@ namespace peach_project_
 {
     public class Citizen
     {
+        //Fields of the object of type Citizen. 
         IEnumerable<XElement> DMblocks;
         IEnumerable<XElement> Testblocks;
         double fitness;
+        int age;
         int index;
+        bool faults;
+     
 
-
+        //constructor of class Citizen
         public Citizen()
         {
-            this.fitness = -1;
+            this.fitness = 0;
             this.index = -1;
+            this.age = 0;
             DMblocks = null;
             Testblocks = null;
+            this.faults = false;
+
         }
 
+        //set and get blocks of information from xml file
         public void setDMBlocks(IEnumerable<XElement> blocks)
         {
             this.DMblocks = blocks;
@@ -43,6 +51,7 @@ namespace peach_project_
             return this.Testblocks;
         }
 
+        //set and get fitness value of the citizen
         public void setFitness(double fitness)
         {
             this.fitness = fitness;
@@ -53,12 +62,14 @@ namespace peach_project_
             return fitness;
         }
 
+
+        //set index of the citizen
         public void setIdx(int idx)
         {
             this.index = idx;
         }
 
-        public double getIdx()
+        public int getIdx()
         {
             return this.index;
         }
@@ -72,5 +83,28 @@ namespace peach_project_
             }
             return count;
         }
+
+        //set and get age of the citizen
+        public void increaseAge()
+        {
+            this.age++;
+        }
+
+        public int getAge()
+        {
+            return this.age;
+        }
+
+        //set and check whether usagage of the citizen ended with a fault
+        public void setFaults(bool fault)
+        {
+            this.faults = fault;
+        }
+
+        public bool hasFaults()
+        {
+            return this.faults;
+        }
+       
     }
 }
